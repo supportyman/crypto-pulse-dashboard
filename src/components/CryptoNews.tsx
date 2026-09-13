@@ -1,110 +1,51 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { ExternalLink, RefreshCw, Clock, Newspaper } from 'lucide-react'
+import { Newspaper, ExternalLink, RefreshCw, Clock, Zap, TrendingUp, Calendar, Building2, ChevronDown, ChevronUp, Globe, AlertTriangle, ArrowUpRight, ArrowDownRight, Minus, Timer } from 'lucide-react'
 
-interface NewsItem {
-  title: string
-  description: string
-  url: string
-  source: string
-  publishedAt: string
-  imageUrl?: string
-}
-
-function timeAgo(dateStr: string): string {
-  const now = Date.now()
-  const then = new Date(dateStr).getTime()
-  const diff = Math.floor((now - then) / 1000)
-  if (diff < 60) return 'just now'
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
-  return `${Math.floor(diff / 86400)}d ago`
-}
-
-const sourceColors: Record<string, string> = {
-  CoinTelegraph: 'bg-blue-600 text-white',
-  CoinDesk: 'bg-purple-600 text-white',
-  Decrypt: 'bg-orange-500 text-white',
-}
-
+interface NewsItem { title: string; description: string; url: string; source: string; publishedAt: string; imageUrl: string | null; category?: string }
+interface CalEvent { date: string; title: string; country: string; impact: 'high' | 'medium' | 'low'; expected: string; previous: string; actual: string; description: string; investingUrl: string; timeDisplay: string; isUpcoming: boolean; isPast: boolean }
+const IMPACT_STYLES = { high: { bg: 'bg-red-500/10', text: 'text-red-400', border: 'border-red-500/30', dot: 'bg-red-500', label: 'HIGH' }, medium: { bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/30', dot: 'bg-amber-500', label: 'MED' }, low: { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/30', dot: 'bg-blue-500', label: 'LOW' } }
+function timeAgo(dateStr: string): string { const diff = Date.now() - new Date(dateStr).getTime(); if (diff < 60000) return 'just now'; const mins = Math.floor(diff / 60000); if (mins < 60) return `${mins}m ago`; const hours = Math.floor(mins / 60); if (hours < 24) return `${hours}h ago`; return `${Math.floor(hours / 24)}d ago` }
+function countdown(dateStr: string): string { const diff = new Date(dateStr).getTime() - Date.now(); if (diff < 0) return 'Released'; const hours = Math.floor(diff / 3600000); const mins = Math.floor((diff % 3600000) / 60000); const days = Math.floor(hours / 24); if (days > 0) return `in ${days}d ${hours % 24}h`; if (hours > 0) return `in ${hours}h ${mins}m`; return `in ${mins}m` }
 export function CryptoNews() {
-  const [news, setNews] = useState<NewsItem[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [cryptoNews, setCryptoNews] = useState<NewsItem[]>([])
+  const [investingNews, setInvestingNews] = useState<NewsItem[]>([])
+  const [calendar, setCalendar] = useState<{ upcoming: CalEvent[], past: CalEvent[] }>({ upcoming: [], past: [] })
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [filter, setFilter] = useState<string>('all')
-  const sources = ['all', 'CoinTelegraph', 'CoinDesk', 'Decrypt']
-
-  const fetchNews = async () => {
-    setIsLoading(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/crypto/news')
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
-      if (data.error) throw new Error(data.error)
-      setNews(data)
-    } catch (e: any) {
-      setError(e.message)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchNews()
-    const interval = setInterval(fetchNews, 5 * 60 * 1000)
-    return () => clearInterval(interval)
-  }, [])
-
-  const filtered = filter === 'all' ? news : news.filter(n => n.source === filter)
-
+  const [sourceFilter, setSourceFilter] = useState<string>('all')
+  const [expandedEvent, setExpandedEvent] = useState<string | null>(null)
+  const [showPast, setShowPast] = useState(false)
+  const fetchAll = async () => { setLoading(true); setError(null); try { const [newsRes, investRes, calRes] = await Promise.allSettled([fetch('/api/crypto/news').then(r => r.ok ? r.json() : []), fetch('/api/crypto/investing-news').then(r => r.ok ? r.json() : []), fetch('/api/crypto/us-calendar').then(r => r.ok ? r.json() : { upcoming: [], past: [] })]); if (newsRes.status === 'fulfilled') setCryptoNews(newsRes.value); if (investRes.status === 'fulfilled') setInvestingNews(investRes.value); if (calRes.status === 'fulfilled') setCalendar(calRes.value) } catch (e: any) { setError(e.message) } finally { setLoading(false) } }
+  useEffect(() => { fetchAll() }, [])
+  const allSources = useMemo(() => { const sources = new Set<string>(); cryptoNews.forEach(n => sources.add(n.source)); investingNews.forEach(n => sources.add(n.source)); return ['all', ...Array.from(sources)] }, [cryptoNews, investingNews])
+  const filteredCrypto = useMemo(() => sourceFilter === 'all' ? cryptoNews : cryptoNews.filter(n => n.source === sourceFilter), [cryptoNews, sourceFilter])
+  const filteredInvesting = useMemo(() => sourceFilter === 'all' ? investingNews : investingNews.filter(n => n.source === sourceFilter), [investingNews, sourceFilter])
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
-          <Newspaper className="w-5 h-5 text-primary" /> Live Crypto News
-        </h2>
-        <Button variant="ghost" size="sm" onClick={fetchNews} disabled={isLoading}>
-          <RefreshCw className={`w-4 h-4 mr-1.5 ${isLoading ? 'animate-spin' : ''}`} /> Refresh
-        </Button>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center border border-primary/20"><Newspaper className="w-5 h-5 text-primary" /></div><div><h2 className="text-xl font-bold text-foreground">News & Economic Calendar</h2><p className="text-sm text-muted-foreground">Live news from Investing.com, CoinTelegraph, CoinDesk & Decrypt</p></div></div><Button variant="outline" size="sm" onClick={fetchAll} disabled={loading} className="gap-2"><RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />Refresh</Button></div>
+      <div className="flex flex-wrap gap-2">{allSources.map(src => (<Button key={src} variant={sourceFilter === src ? 'default' : 'ghost'} size="sm" onClick={() => setSourceFilter(src)} className={`text-xs h-7 px-3 ${sourceFilter === src ? 'bg-primary/20 text-primary' : ''}`}>{src === 'all' ? 'All Sources' : src}</Button>))}</div>
+      {error && (<Card className="border-red-500/30 bg-red-500/5"><CardContent className="p-3 flex items-center gap-2"><AlertTriangle className="w-4 h-4 text-red-400" /><span className="text-sm text-red-400">{error}</span></CardContent></Card>)}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div className="xl:col-span-1 space-y-4">
+          <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-primary" /><h3 className="text-sm font-bold text-foreground">US Economic Calendar</h3><a href="https://www.investing.com/economic-calendar/" target="_blank" rel="noopener noreferrer" className="ml-auto text-[10px] text-primary hover:text-primary/80 flex items-center gap-1">Full Calendar <ExternalLink className="w-2.5 h-2.5" /></a></div>
+          {loading ? (<div className="space-y-2">{Array.from({ length: 6 }).map((_, i) => (<div key={i} className="animate-pulse bg-muted/50 rounded-lg h-20" />))}</div>) : calendar.upcoming.length === 0 ? (<Card className="border-border/50 bg-card/50"><CardContent className="p-6 text-center"><Calendar className="w-6 h-6 text-muted-foreground mx-auto mb-2" /><p className="text-xs text-muted-foreground">No upcoming events</p></CardContent></Card>) : (
+            <div className="space-y-2">{calendar.upcoming.map((ev, idx) => { const style = IMPACT_STYLES[ev.impact]; const key = `${ev.date}-${ev.title}`; const isExpanded = expandedEvent === key; const cd = countdown(ev.date); const isImminent = cd.includes('m') && !cd.includes('d'); return (<Card key={idx} className={`bg-card/80 backdrop-blur-sm border-border/50 hover:border-primary/30 transition-all cursor-pointer ${ev.impact === 'high' && isImminent ? 'ring-1 ring-red-500/30' : ''}`} onClick={() => setExpandedEvent(isExpanded ? null : key)}><CardContent className="p-3"><div className="flex items-start gap-2.5"><div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${style.dot}`} /><div className="flex-1 min-w-0"><div className="flex items-center gap-1.5 flex-wrap"><span className="text-xs font-semibold text-foreground leading-tight">{ev.title}</span>{ev.impact === 'high' && <Zap className="w-3 h-3 text-red-400 shrink-0" />}</div><div className="flex items-center gap-1.5 mt-1"><Clock className="w-3 h-3 text-muted-foreground" /><span className="text-[10px] text-muted-foreground">{ev.timeDisplay}</span><Badge variant="secondary" className={`text-[9px] px-1 py-0 h-3.5 border ${style.bg} ${style.text} ${style.border}`}>{style.label}</Badge></div></div><div className="text-right shrink-0"><div className={`text-[10px] font-medium ${isImminent ? 'text-red-400' : 'text-muted-foreground'}`}><Timer className="w-2.5 h-2.5 inline mr-0.5" />{cd}</div>{ev.expected && (<div className="text-[10px] text-muted-foreground mt-0.5">Exp: <span className="text-foreground font-medium">{ev.expected}</span></div>)}</div><div className="shrink-0 text-muted-foreground">{isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}</div></div>{isExpanded && (<div className="mt-2 pt-2 border-t border-border/50 space-y-2"><p className="text-[11px] text-muted-foreground leading-relaxed">{ev.description}</p><div className="flex items-center gap-4">{ev.expected && (<div><div className="text-[9px] text-muted-foreground uppercase tracking-wider">Expected</div><div className="text-xs font-bold text-foreground">{ev.expected}</div></div>)}{ev.previous && (<div><div className="text-[9px] text-muted-foreground uppercase tracking-wider">Previous</div><div className="text-xs font-semibold text-muted-foreground">{ev.previous}</div></div>)}</div><a href={ev.investingUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-[10px] text-primary hover:text-primary/80">View on Investing.com <ExternalLink className="w-2.5 h-2.5" /></a></div>)}</CardContent></Card>))}</div>
+          )}
+          {calendar.past.length > 0 && (<div className="mt-3"><Button variant="ghost" size="sm" onClick={() => setShowPast(!showPast)} className="text-xs text-muted-foreground gap-1 w-full justify-center">{showPast ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}{showPast ? 'Hide' : 'Show'} Recently Released ({calendar.past.length})</Button>{showPast && (<div className="space-y-2 mt-2">{calendar.past.map((ev, idx) => { const style = IMPACT_STYLES[ev.impact]; return (<Card key={idx} className="bg-card/50 border-border/30"><CardContent className="p-2.5"><div className="flex items-center gap-2"><div className={`w-1.5 h-1.5 rounded-full ${style.dot}`} /><span className="text-[11px] text-foreground font-medium">{ev.title}</span><Badge variant="secondary" className={`text-[8px] px-1 py-0 h-3 border ${style.bg} ${style.text} ${style.border}`}>{style.label}</Badge>{ev.actual && (<span className="text-[10px] text-primary font-bold ml-auto">Actual: {ev.actual}</span>)}</div></CardContent></Card>))}</div>)}</div>)}</div>
+        </div>
+        <div className="xl:col-span-2 space-y-4">
+          <div className="flex items-center gap-2 mb-3"><Globe className="w-4 h-4 text-primary" /><h3 className="text-sm font-bold text-foreground">Investing.com News</h3><Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary border border-primary/20">LIVE</Badge></div>
+          {loading ? (<div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => (<div key={i} className="animate-pulse bg-muted/50 rounded-xl h-24" />))}</div>) : filteredInvesting.length === 0 ? (<Card className="border-border/50 bg-card/50"><CardContent className="p-4 text-center"><p className="text-xs text-muted-foreground">No Investing.com news available</p></CardContent></Card>) : (
+            <div className="space-y-2.5">{filteredInvesting.slice(0, 15).map((item, idx) => (<Card key={idx} className="bg-card/80 backdrop-blur-sm border-border/50 hover:border-primary/30 transition-all group"><CardContent className="p-3.5"><a href={item.url} target="_blank" rel="noopener noreferrer" className="block"><div className="flex items-start justify-between gap-3"><div className="flex-1 min-w-0"><h4 className="text-xs font-semibold text-foreground leading-snug group-hover:text-primary transition-colors">{item.title}</h4>{item.description && (<p className="text-[10px] text-muted-foreground mt-1 line-clamp-2 leading-relaxed">{item.description}</p>)}<div className="flex items-center gap-2 mt-2"><Badge variant="secondary" className="text-[9px] px-1.5 py-0 h-3.5 bg-primary/10 text-primary border border-primary/20">{item.source}</Badge><span className="text-[9px] text-muted-foreground flex items-center gap-0.5"><Clock className="w-2.5 h-2.5" />{timeAgo(item.publishedAt)}</span></div></div><ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary shrink-0 mt-0.5 transition-colors" /></div></a></CardContent></Card>))}</div>
+          )}
+          <div className="flex items-center gap-2 mb-3 mt-6"><Newspaper className="w-4 h-4 text-primary" /><h3 className="text-sm font-bold text-foreground">Crypto News</h3><Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary border border-primary/20">LIVE</Badge></div>
+          {loading ? (<div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => (<div key={i} className="animate-pulse bg-muted/50 rounded-xl h-24" />))}</div>) : filteredCrypto.length === 0 ? (<Card className="border-border/50 bg-card/50"><CardContent className="p-4 text-center"><p className="text-xs text-muted-foreground">No crypto news available</p></CardContent></Card>) : (
+            <div className="space-y-2.5">{filteredCrypto.slice(0, 15).map((item, idx) => (<Card key={idx} className="bg-card/80 backdrop-blur-sm border-border/50 hover:border-primary/30 transition-all group"><CardContent className="p-3.5"><a href={item.url} target="_blank" rel="noopener noreferrer" className="block"><div className="flex items-start justify-between gap-3"><div className="flex-1 min-w-0"><h4 className="text-xs font-semibold text-foreground leading-snug group-hover:text-primary transition-colors">{item.title}</h4>{item.description && (<p className="text-[10px] text-muted-foreground mt-1 line-clamp-2 leading-relaxed">{item.description}</p>)}<div className="flex items-center gap-2 mt-2"><Badge variant="secondary" className="text-[9px] px-1.5 py-0 h-3.5">{item.source}</Badge><span className="text-[9px] text-muted-foreground flex items-center gap-0.5"><Clock className="w-2.5 h-2.5" />{timeAgo(item.publishedAt)}</span></div></div><ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary shrink-0 mt-0.5 transition-colors" /></div></a></CardContent></Card>))}</div>
+          )}</div>
       </div>
-      <div className="flex gap-2">
-        {sources.map(s => (
-          <button key={s} onClick={() => setFilter(s)} className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${filter === s ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground hover:bg-accent'}`}>
-            {s === 'all' ? 'All Sources' : s}
-          </button>
-        ))}
-      </div>
-      {error && (
-        <Card className="border-destructive/50 bg-destructive/10"><CardContent className="p-3 text-sm text-destructive">Failed to load news: {error}</CardContent></Card>
-      )}
-      {isLoading && news.length === 0 && (
-        <div className="space-y-3">{Array.from({ length: 5 }).map((_, i) => (<div key={i} className="animate-pulse bg-card rounded-lg p-4 space-y-2"><div className="h-4 bg-muted rounded w-3/4" /><div className="h-3 bg-muted rounded w-1/2" /></div>))}</div>
-      )}
-      <div className="space-y-2">
-        {filtered.map((item, idx) => (
-          <a key={idx} href={item.url} target="_blank" rel="noopener noreferrer" className="block group">
-            <Card className="bg-card/80 backdrop-blur-sm hover:border-primary/30 hover:bg-accent/30 border-border/50 transition-all duration-200 shadow-sm hover:shadow-md hover:shadow-primary/5">
-              <CardContent className="p-4">
-                <div className="flex items-start gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <Badge className={`${sourceColors[item.source] || 'bg-secondary'} text-xs`}>{item.source}</Badge>
-                      <span className="text-xs text-muted-foreground flex items-center gap-1"><Clock className="w-3 h-3" />{timeAgo(item.publishedAt)}</span>
-                    </div>
-                    <h3 className="font-semibold text-foreground text-sm leading-snug group-hover:text-primary transition-colors line-clamp-2">{item.title}</h3>
-                    {item.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{item.description}</p>}
-                  </div>
-                  <ExternalLink className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors shrink-0 mt-1" />
-                </div>
-              </CardContent>
-            </Card>
-          </a>
-        ))}
-      </div>
-      {!isLoading && filtered.length === 0 && !error && <div className="text-center py-8 text-muted-foreground text-sm">No news articles found</div>}
     </div>
   )
 }
