@@ -5,64 +5,28 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Bell, Flame, Activity } from 'lucide-react'
 
 interface FearGreedItem { value: string; value_classification: string; timestamp: string }
-interface TrendingCoin { item: { name: string; symbol: string; market_cap_rank: number; thumb: string; data: { price: number; price_btc: number; score: number; sparkline: string } } }
-
-function fearColor(val: number): string {
-  if (val <= 25) return 'text-red-400'
-  if (val <= 45) return 'text-orange-400'
-  if (val <= 55) return 'text-yellow-400'
-  if (val <= 75) return 'text-emerald-400'
-  return 'text-green-400'
-}
-function fearBg(val: number): string {
-  if (val <= 25) return 'bg-red-500'
-  if (val <= 45) return 'bg-orange-500'
-  if (val <= 55) return 'bg-yellow-500'
-  if (val <= 75) return 'bg-emerald-500'
-  return 'bg-green-500'
-}
+interface TrendingCoin { id: string; name: string; symbol: string; price: number; change24h: number; rank: number }
 
 export function EventsPopup() {
   const [fearGreed, setFearGreed] = useState<FearGreedItem[]>([])
   const [trending, setTrending] = useState<TrendingCoin[]>([])
-  const [isOpen, setIsOpen] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const fetchData = async () => {
-    setIsLoading(true)
-    try {
-      const [fgRes, trRes] = await Promise.allSettled([fetch('/api/crypto/fear-greed'), fetch('/api/crypto/trending')])
-      if (fgRes.status === 'fulfilled' && fgRes.value.ok) { const fgData = await fgRes.value.json(); setFearGreed(fgData.data || []) }
-      if (trRes.status === 'fulfilled' && trRes.value.ok) { const trData = await trRes.value.json(); setTrending(trData.coins?.slice(0, 7) || []) }
-    } catch {} finally { setIsLoading(false) }
-  }
+  const [loading, setLoading] = useState(true)
+
+  const fetchData = async () => { setLoading(true); try { const [fgRes, trRes] = await Promise.allSettled([fetch('/api/crypto/fear-greed').then(r => r.ok ? r.json() : { data: [] }), fetch('/api/crypto/trending').then(r => r.ok ? r.json() : { coins: [] })]); if (fgRes.status === 'fulfilled') setFearGreed(fgRes.value.data || []); if (trRes.status === 'fulfilled') setTrending(trRes.value.coins || []) } catch {} finally { setLoading(false) } }
   useEffect(() => { fetchData() }, [])
-  const currentFear = fearGreed[0] ? parseInt(fearGreed[0].value) : null
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-border bg-secondary hover:bg-accent text-sm font-medium text-foreground transition-colors"><Bell className="w-4 h-4" /> Market Intel</DialogTrigger>
-      <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
-        <DialogHeader><DialogTitle className="flex items-center gap-2 text-foreground"><Activity className="w-5 h-5 text-primary" /> Market Intelligence</DialogTitle></DialogHeader>
-        {isLoading && fearGreed.length === 0 ? (<div className="space-y-3 py-4">{Array.from({ length: 3 }).map((_, i) => (<div key={i} className="animate-pulse bg-muted rounded-lg h-20" />))}</div>) : (
-          <div className="space-y-4">
-            <Card className="bg-card/80 backdrop-blur-sm border-border/50 hover:border-primary/30 transition-all"><CardContent className="p-4"><h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2"><Activity className="w-4 h-4 text-primary" /> Fear & Greed Index — 7 Days</h3><div className="space-y-2">{fearGreed.map((item, idx) => { const val = parseInt(item.value); const date = new Date(parseInt(item.timestamp) * 1000); const label = idx === 0 ? 'Today' : date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }); return (<div key={idx} className="flex items-center gap-3"><span className="text-xs text-muted-foreground w-20 shrink-0">{label}</span><div className="flex-1 h-2.5 bg-muted rounded-full overflow-hidden"><div className={`h-full ${fearBg(val)} rounded-full transition-all`} style={{ width: `${val}%` }} /></div><span className={`text-sm font-bold w-8 text-right ${fearColor(val)}`}>{val}</span><span className="text-xs text-muted-foreground w-16">{item.value_classification}</span></div>) })}</div>{currentFear !== null && (<div className="mt-3 pt-3 border-t border-border/50 text-xs text-muted-foreground">{currentFear <= 25 ? '🔴 Extreme Fear — potential buying opportunity' : currentFear <= 45 ? '🟠 Fear — market is cautious' : currentFear <= 55 ? '🟡 Neutral — balanced sentiment' : currentFear <= 75 ? '🟢 Greed — market is optimistic' : '🟢 Extreme Greed — caution advised'}</div>)}</CardContent></Card>
-            <Card className="bg-card/80 backdrop-blur-sm border-border/50 hover:border-primary/30 transition-all"><CardContent className="p-4"><h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2"><Flame className="w-4 h-4 text-orange-400" /> Trending Now</h3><div className="space-y-2">{trending.map((t, idx) => (<div key={idx} className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50 transition-colors"><img src={t.item.thumb} alt={t.item.name} className="w-7 h-7 rounded-full" loading="lazy" /><div className="flex-1 min-w-0"><div className="text-sm font-medium text-foreground">{t.item.name}<span className="text-muted-foreground ml-1.5">{t.item.symbol.toUpperCase()}</span></div></div>{t.item.data?.price !== undefined && (<span className="text-sm font-semibold text-foreground">${t.item.data.price < 1 ? t.item.data.price.toFixed(4) : t.item.data.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>)}{t.item.market_cap_rank && (<Badge variant="secondary" className="text-xs">#{t.item.market_cap_rank}</Badge>)}</div>))}</div></CardContent></Card>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
+    <Dialog><DialogTrigger asChild><button className="relative inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-card/80 border border-border/50 hover:border-primary/30 transition-all text-sm"><Bell className="w-4 h-4 text-primary" /><span className="hidden sm:inline text-foreground font-medium">Market Intel</span>{fearGreed.length > 0 && (<Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary border border-primary/20">{fearGreed[0].value}</Badge>)}</button></DialogTrigger><DialogContent className="bg-card/95 backdrop-blur-xl border-border/50 max-w-lg"><DialogHeader><DialogTitle className="flex items-center gap-2 text-foreground"><Flame className="w-5 h-5 text-primary" />Market Intelligence</DialogTitle></DialogHeader><div className="space-y-4">
+      <div><h4 className="text-sm font-semibold text-foreground mb-2">Fear & Greed Index (7 Days)</h4><div className="space-y-2">{fearGreed.map((fg, i) => { const val = parseInt(fg.value); const color = val >= 75 ? 'text-emerald-400' : val >= 50 ? 'text-yellow-400' : val >= 25 ? 'text-orange-400' : 'text-red-400'; return (<div key={i} className="flex items-center justify-between p-2 rounded-lg bg-secondary/50"><span className="text-xs text-muted-foreground">{new Date(fg.timestamp * 1000).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span><div className="flex items-center gap-2"><Badge variant="secondary" className={`text-xs ${color}`}>{fg.value}</Badge><span className="text-xs text-muted-foreground">{fg.value_classification}</span></div></div>)})}</div></div>
+      <div><h4 className="text-sm font-semibold text-foreground mb-2">Top Trending Coins</h4><div className="space-y-1.5">{trending.slice(0, 7).map((coin) => (<div key={coin.id} className="flex items-center justify-between p-2 rounded-lg bg-secondary/50"><div className="flex items-center gap-2"><Activity className="w-3 h-3 text-primary" /><span className="text-xs font-medium text-foreground">{coin.symbol.toUpperCase()}</span><span className="text-xs text-muted-foreground">{coin.name}</span></div><div className="text-right"><span className="text-xs font-medium text-foreground">${coin.price?.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span><span className={`text-[10px] ml-2 ${coin.change24h > 0 ? 'text-emerald-400' : 'text-red-400'}`}>{coin.change24h > 0 ? '+' : ''}{coin.change24h?.toFixed(2)}%</span></div></div>))}</div></div>
+      {loading && (<div className="text-xs text-muted-foreground text-center py-2">Loading...</div>)}</div></DialogContent></Dialog>
   )
 }
 
 export function MarketTicker() {
-  const [fearGreed, setFearGreed] = useState<FearGreedItem[]>([])
-  useEffect(() => { fetch('/api/crypto/fear-greed').then(r => r.ok ? r.json() : null).then(d => { if (d?.data) setFearGreed(d.data) }).catch(() => {}) }, [])
-  const current = fearGreed[0]
-  if (!current) return null
-  const val = parseInt(current.value)
-  return (
-    <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${val <= 25 ? 'bg-red-500/15 text-red-400' : val <= 45 ? 'bg-orange-500/15 text-orange-400' : val <= 55 ? 'bg-yellow-500/15 text-yellow-400' : 'bg-emerald-500/15 text-emerald-400'}`}>
-      <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: 'currentColor' }} />
-      Fear & Greed: {val} — {current.value_classification}
-    </div>
-  )
+  const [fearGreed, setFearGreed] = useState<FearGreedItem | null>(null)
+  useEffect(() => { fetch('/api/crypto/fear-greed').then(r => r.ok ? r.json() : { data: [] }).then(d => { if (d.data?.length) setFearGreed(d.data[0]) }).catch(() => {}) }, [])
+  if (!fearGreed) return null
+  const val = parseInt(fearGreed.value)
+  const color = val >= 75 ? 'text-emerald-400' : val >= 50 ? 'text-yellow-400' : val >= 25 ? 'text-orange-400' : 'text-red-400'
+  return (<div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-card/80 border border-border/50"><Flame className="w-4 h-4 text-primary" /><span className="text-xs text-muted-foreground">F&G</span><span className={`text-sm font-bold ${color}`}>{fearGreed.value}</span><span className="text-[10px] text-muted-foreground">{fearGreed.value_classification}</span></div>)
 }

@@ -5,161 +5,39 @@ import { Button } from '@/components/ui/button'
 import { Brain, TrendingUp, TrendingDown, RefreshCw, AlertTriangle, ArrowUp, ArrowDown, Minus } from 'lucide-react'
 import { AreaChart, Area, ResponsiveContainer, Tooltip, ReferenceLine } from 'recharts'
 
-interface MarketCoin {
-  id: string
-  symbol: string
-  name: string
-  image: string
-  current_price: number
-  market_cap_rank: number
-  price_change_percentage_24h: number
-  price_change_percentage_7d_in_currency: number
-  price_change_percentage_1h_in_currency: number
-  sparkline_in_7d: { price: number[] }
-  high_24h: number
-  low_24h: number
-  total_volume: number
-  market_cap: number
-}
-
-interface Prediction {
-  coin: MarketCoin
-  bullishTarget: number
-  bearishTarget: number
-  expectedHigh: number
-  expectedLow: number
-  mostLikely: number
-  confidence: number
-  trend: 'bullish' | 'bearish' | 'sideways'
-  reasons: string[]
-}
-
-function formatPrice(price: number): string {
-  if (price >= 1) return `$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-  return `$${price.toFixed(4)}`
-}
-
-function analyzeCoin(coin: MarketCoin): Prediction {
-  const spark = coin.sparkline_in_7d?.price || []
-  const price = coin.current_price
-  const change24h = coin.price_change_percentage_24h ?? 0
-  const change7d = coin.price_change_percentage_7d_in_currency ?? 0
-  const change1h = coin.price_change_percentage_1h_in_currency ?? 0
-  let weekHigh = price
-  let weekLow = price
-  let volatility = 0
-  let momentum = 0
-  if (spark.length > 1) {
-    weekHigh = Math.max(...spark)
-    weekLow = Math.min(...spark)
-    const returns: number[] = []
-    for (let i = 1; i < spark.length; i++) {
-      if (spark[i - 1] > 0) returns.push((spark[i] - spark[i - 1]) / spark[i - 1])
-    }
-    if (returns.length > 0) {
-      const avg = returns.reduce((a, b) => a + b, 0) / returns.length
-      volatility = Math.sqrt(returns.reduce((a, b) => a + (b - avg) ** 2, 0) / returns.length) * 100
-    }
-    const q = Math.max(1, Math.floor(spark.length / 4))
-    const recent = spark.slice(-q)
-    const earlier = spark.slice(0, q)
-    const recentAvg = recent.reduce((a, b) => a + b, 0) / recent.length
-    const earlierAvg = earlier.reduce((a, b) => a + b, 0) / earlier.length
-    momentum = earlierAvg > 0 ? ((recentAvg - earlierAvg) / earlierAvg) * 100 : 0
-  }
-  const volumeRatio = coin.market_cap > 0 ? coin.total_volume / coin.market_cap : 0
-  const weeklyRange = weekHigh - weekLow
-  const weeklyRangePct = price > 0 ? (weeklyRange / price) * 100 : 0
-  const support = weekLow
-  const resistance = weekHigh
-  const trendStrength = Math.abs(momentum) + Math.abs(change7d) * 0.3
-  const upsidePotential = (weeklyRangePct * 0.5) + (trendStrength > 0 && momentum > 0 ? trendStrength * 0.8 : weeklyRangePct * 0.3)
-  const bullishTarget = price * (1 + upsidePotential / 100)
-  const downsidePotential = (weeklyRangePct * 0.5) + (trendStrength > 0 && momentum < 0 ? trendStrength * 0.8 : weeklyRangePct * 0.3)
-  const bearishTarget = price * (1 - downsidePotential / 100)
-  const expectedMove = volatility * 1.2
-  const expectedHigh = price * (1 + expectedMove / 100)
-  const expectedLow = price * (1 - expectedMove / 100)
-  const trendBias = momentum * 0.4 + change7d * 0.3 + change24h * 0.2 + change1h * 0.1
-  const mostLikely = price * (1 + trendBias * 0.02)
-  const signals = [change7d > 0, momentum > 0, change24h > 0, change1h > 0]
-  const agreement = signals.filter(Boolean).length
-  const signalStrength = Math.abs(agreement - 2) / 2
-  const confidence = Math.max(40, Math.min(88, 50 + signalStrength * 30 + (volumeRatio > 0.05 ? 8 : 0) - (volatility > 6 ? 10 : 0)))
-  let trend: Prediction['trend']
-  if (momentum > 1.5 && change7d > 0) trend = 'bullish'
-  else if (momentum < -1.5 && change7d < 0) trend = 'bearish'
-  else trend = 'sideways'
-  const reasons: string[] = []
-  if (momentum > 3) reasons.push(`Strong upward momentum (${momentum.toFixed(1)}%)`)
-  else if (momentum < -3) reasons.push(`Downward pressure (${momentum.toFixed(1)}%)`)
-  if (change7d > 8) reasons.push(`Up ${change7d.toFixed(1)}% this week — possible continuation`)
-  else if (change7d < -8) reasons.push(`Down ${Math.abs(change7d).toFixed(1)}% this week — may find support`)
-  if (volatility > 5) reasons.push('High volatility — expect wider price swings')
-  else if (volatility < 2) reasons.push('Low volatility — tight range expected')
-  if (volumeRatio > 0.08) reasons.push('Strong volume confirms the move')
-  if (price >= resistance * 0.98) reasons.push('Testing weekly highs — breakout possible')
-  else if (price <= support * 1.02) reasons.push('Near weekly lows — support level close')
-  if (reasons.length === 0) reasons.push('Consolidation — waiting for a catalyst')
+interface MarketCoin { id: string; symbol: string; name: string; rank: number; price: number; marketCap: number; volume24h: number; change1h: number; change24h: number; change7d: number; sparkline: number[]; ath: number; athDrop: number }
+interface Prediction { coin: MarketCoin; bullishTarget: number; bearishTarget: number; expectedHigh: number; expectedLow: number; mostLikely: number; confidence: number; trend: 'bullish' | 'bearish' | 'sideways'; reasons: string[] }
+function formatPrice(price: number): string { if (price == null || isNaN(price)) return '$0.00'; if (price >= 1) return `$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; return `$${price.toFixed(4)}` }
+function analyzeCoin(coin: MarketCoin): Prediction { const spark = coin.sparkline || []; const price = coin.price; const change24h = coin.change24h ?? 0; const change7d = coin.change7d ?? 0; const change1h = coin.change1h ?? 0; let weekHigh = price; let weekLow = price; let volatility = 0; let momentum = 0
+  if (spark.length > 1) { weekHigh = Math.max(...spark); weekLow = Math.min(...spark); const returns: number[] = []; for (let i = 1; i < spark.length; i++) { if (spark[i - 1] > 0) returns.push((spark[i] - spark[i - 1]) / spark[i - 1]) } if (returns.length > 0) { const avg = returns.reduce((a, b) => a + b, 0) / returns.length; volatility = Math.sqrt(returns.reduce((a, b) => a + (b - avg) ** 2, 0) / returns.length) * 100 } const q = Math.max(1, Math.floor(spark.length / 4)); const recent = spark.slice(-q); const earlier = spark.slice(0, q); const recentAvg = recent.reduce((a, b) => a + b, 0) / recent.length; const earlierAvg = earlier.reduce((a, b) => a + b, 0) / earlier.length; momentum = earlierAvg > 0 ? ((recentAvg - earlierAvg) / earlierAvg) * 100 : 0 }
+  const volumeRatio = coin.marketCap > 0 ? coin.volume24h / coin.marketCap : 0; const weeklyRangePct = price > 0 ? ((weekHigh - weekLow) / price) * 100 : 0; const trendStrength = Math.abs(momentum) + Math.abs(change7d) * 0.3
+  const upsidePotential = (weeklyRangePct * 0.5) + (trendStrength > 0 && momentum > 0 ? trendStrength * 0.8 : weeklyRangePct * 0.3); const bullishTarget = price * (1 + upsidePotential / 100)
+  const downsidePotential = (weeklyRangePct * 0.5) + (trendStrength > 0 && momentum < 0 ? trendStrength * 0.8 : weeklyRangePct * 0.3); const bearishTarget = price * (1 - downsidePotential / 100)
+  const expectedMove = volatility * 1.2; const expectedHigh = price * (1 + expectedMove / 100); const expectedLow = price * (1 - expectedMove / 100)
+  const trendBias = momentum * 0.4 + change7d * 0.3 + change24h * 0.2 + change1h * 0.1; const mostLikely = price * (1 + trendBias * 0.02)
+  const signals = [change7d > 0, momentum > 0, change24h > 0, change1h > 0]; const agreement = signals.filter(Boolean).length; const signalStrength = Math.abs(agreement - 2) / 2; const confidence = Math.max(40, Math.min(88, 50 + signalStrength * 30 + (volumeRatio > 0.05 ? 8 : 0) - (volatility > 6 ? 10 : 0)))
+  let trend: Prediction['trend']; if (momentum > 1.5 && change7d > 0) trend = 'bullish'; else if (momentum < -1.5 && change7d < 0) trend = 'bearish'; else trend = 'sideways'
+  const reasons: string[] = []; if (momentum > 3) reasons.push(`Strong upward momentum (${momentum.toFixed(1)}%)`); else if (momentum < -3) reasons.push(`Downward pressure (${momentum.toFixed(1)}%)`); if (change7d > 8) reasons.push(`Up ${change7d.toFixed(1)}% this week — possible continuation`); else if (change7d < -8) reasons.push(`Down ${Math.abs(change7d).toFixed(1)}% this week — may find support`); if (volatility > 5) reasons.push('High volatility — expect wider price swings'); else if (volatility < 2) reasons.push('Low volatility — tight range expected'); if (volumeRatio > 0.08) reasons.push('Strong volume confirms the move'); if (price >= weekHigh * 0.98) reasons.push('Testing weekly highs — breakout possible'); else if (price <= weekLow * 1.02) reasons.push('Near weekly lows — support level close'); if (reasons.length === 0) reasons.push('Consolidation — waiting for a catalyst')
   return { coin, bullishTarget, bearishTarget, expectedHigh, expectedLow, mostLikely, confidence, trend, reasons }
 }
 
-export function CryptoPredictions() {
-  const [coins, setCoins] = useState<MarketCoin[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const fetchData = async () => {
-    setIsLoading(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/crypto/markets')
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
-      if (data.error) throw new Error(data.error)
-      setCoins(data)
-    } catch (e: any) { setError(e.message) } finally { setIsLoading(false) }
-  }
-  useEffect(() => { fetchData(); const i = setInterval(fetchData, 60000); return () => clearInterval(i) }, [])
-  const predictions = useMemo(() => coins.map(analyzeCoin), [coins])
+export function CryptoPredictions() { const [coins, setCoins] = useState<MarketCoin[]>([]); const [isLoading, setIsLoading] = useState(true); const [error, setError] = useState<string | null>(null); const fetchData = async () => { setIsLoading(true); setError(null); try { const res = await fetch('/api/crypto/markets'); if (!res.ok) throw new Error(`HTTP ${res.status}`); const data = await res.json(); if (data.error) throw new Error(data.error); setCoins(data) } catch (e: any) { setError(e.message) } finally { setIsLoading(false) } }; useEffect(() => { fetchData(); const interval = setInterval(fetchData, 60 * 1000); return () => clearInterval(interval) }, []); const predictions = useMemo(() => coins.map(analyzeCoin), [coins])
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-foreground flex items-center gap-2"><Brain className="w-5 h-5 text-primary" /> Weekly Price Predictions <Badge variant="secondary" className="text-xs font-normal ml-1">AI-POWERED</Badge></h2>
-        <Button variant="ghost" size="sm" onClick={fetchData} disabled={isLoading}><RefreshCw className={`w-4 h-4 mr-1.5 ${isLoading ? 'animate-spin' : ''}`} /> Refresh</Button>
-      </div>
+      <div className="flex items-center justify-between"><h2 className="text-xl font-bold text-foreground flex items-center gap-2"><Brain className="w-5 h-5 text-primary" />Weekly Price Predictions<Badge variant="secondary" className="text-xs font-normal ml-1">AI-POWERED</Badge></h2><Button variant="ghost" size="sm" onClick={fetchData} disabled={isLoading}><RefreshCw className={`w-4 h-4 mr-1.5 ${isLoading ? 'animate-spin' : ''}`} />Refresh</Button></div>
       <div className="flex items-start gap-2 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-xs text-yellow-400"><AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" /><span>Weekly price targets are estimated from 7-day momentum, volatility, volume, and trend analysis. Not financial advice.</span></div>
-      {error && <Card className="border-destructive/50 bg-destructive/10"><CardContent className="p-3 text-sm text-destructive">Failed to load data: {error}</CardContent></Card>}
-      {isLoading && coins.length === 0 && <div className="space-y-3">{Array.from({ length: 5 }).map((_, i) => (<div key={i} className="animate-pulse bg-card/80 rounded-lg p-5 space-y-3"><div className="flex items-center gap-3"><div className="h-10 w-10 bg-muted rounded-full" /><div className="h-4 bg-muted rounded w-1/4" /></div></div>))}</div>}
-      <div className="space-y-3">
-        {predictions.map((pred) => {
-          const sparkData = (pred.coin.sparkline_in_7d?.price || []).map((p, i) => ({ v: p, i }))
-          const price = pred.coin.current_price
-          const isBullish = pred.trend === 'bullish'
-          const isBearish = pred.trend === 'bearish'
-          const bullPct = price > 0 ? ((pred.bullishTarget - price) / price * 100) : 0
-          const bearPct = price > 0 ? ((price - pred.bearishTarget) / price * 100) : 0
-          return (
-            <Card key={pred.coin.id} className="bg-card/80 backdrop-blur-sm border-border/40 hover:border-primary/30 hover:shadow-md hover:shadow-primary/5 transition-all duration-200">
-              <CardContent className="p-4 space-y-3">
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-3 w-36 shrink-0"><img src={pred.coin.image} alt={pred.coin.name} className="w-9 h-9 rounded-full" loading="lazy" /><div><div className="font-bold text-sm text-foreground">{pred.coin.symbol.toUpperCase()}</div><div className="text-xs text-muted-foreground">{pred.coin.name}</div></div></div>
-                  <div className="text-sm font-bold text-foreground">{formatPrice(price)}</div>
-                  <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${isBullish ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : isBearish ? 'bg-red-500/15 text-red-400 border-red-500/30' : 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30'}`}>{isBullish ? <TrendingUp className="w-3 h-3" /> : isBearish ? <TrendingDown className="w-3 h-3" /> : <Minus className="w-3 h-3" />}{pred.trend.charAt(0).toUpperCase() + pred.trend.slice(1)}</div>
-                  <div className="ml-auto text-xs text-muted-foreground">Confidence: <span className="font-bold text-foreground">{Math.round(pred.confidence)}%</span></div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1.5 w-36 shrink-0"><ArrowDown className="w-4 h-4 text-red-400 shrink-0" /><div><div className="text-[10px] text-red-400/70 uppercase tracking-wide">Downside Target</div><div className="text-sm font-bold text-red-400">{formatPrice(pred.bearishTarget)}</div><div className="text-[10px] text-red-400/60">-{bearPct.toFixed(1)}% possible</div></div></div>
-                  <div className="flex-1 px-2"><div className="relative h-8 rounded-full overflow-hidden bg-muted/50"><div className="absolute inset-0 flex"><div className="w-1/2 bg-gradient-to-r from-red-500/20 to-transparent" /><div className="w-1/2 bg-gradient-to-l from-emerald-500/20 to-transparent" /></div><div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-foreground/80 -translate-x-1/2" /><div className="absolute inset-0 flex items-center justify-center"><span className="text-[10px] font-medium text-foreground/60">Expected range: {formatPrice(pred.expectedLow)} — {formatPrice(pred.expectedHigh)}</span></div></div></div>
-                  <div className="flex items-center gap-1.5 w-36 shrink-0 text-right justify-end"><div><div className="text-[10px] text-emerald-400/70 uppercase tracking-wide">Upside Target</div><div className="text-sm font-bold text-emerald-400">{formatPrice(pred.bullishTarget)}</div><div className="text-[10px] text-emerald-400/60">+{bullPct.toFixed(1)}% possible</div></div><ArrowUp className="w-4 h-4 text-emerald-400 shrink-0" /></div>
-                </div>
-                <div className="h-14">{sparkData.length > 0 && (<ResponsiveContainer width="100%" height="100%"><AreaChart data={sparkData} margin={{ top: 2, right: 4, bottom: 2, left: 4 }}><defs><linearGradient id={`pred-${pred.coin.id}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={isBullish ? '#10b981' : isBearish ? '#ef4444' : '#eab308'} stopOpacity={0.25} /><stop offset="100%" stopColor={isBullish ? '#10b981' : isBearish ? '#ef4444' : '#eab308'} stopOpacity={0} /></linearGradient></defs><ReferenceLine y={pred.bullishTarget} stroke="#10b981" strokeDasharray="4 4" strokeOpacity={0.4} /><ReferenceLine y={pred.bearishTarget} stroke="#ef4444" strokeDasharray="4 4" strokeOpacity={0.4} /><Area type="monotone" dataKey="v" stroke={isBullish ? '#10b981' : isBearish ? '#ef4444' : '#eab308'} strokeWidth={1.5} fill={`url(#pred-${pred.coin.id})`} dot={false} /><Tooltip contentStyle={{ backgroundColor: 'oklch(0.16 0.012 260)', border: '1px solid oklch(0.28 0.015 260)', borderRadius: '8px', fontSize: '12px' }} formatter={(value: number) => [formatPrice(value), 'Price']} labelFormatter={() => ''} /></AreaChart></ResponsiveContainer>)}</div>
-                <div className="flex flex-wrap gap-1.5 pt-1 border-t border-border/20">{pred.reasons.map((reason, i) => (<span key={i} className="text-[11px] px-2 py-0.5 rounded-full bg-secondary/80 text-muted-foreground">{reason}</span>))}</div>
-              </CardContent>
-            </Card>
-          )
-        })}
-      </div>
-      {!isLoading && predictions.length === 0 && !error && <div className="text-center py-8 text-muted-foreground text-sm">No prediction data available</div>}
+      {error && (<Card className="border-destructive/50 bg-destructive/10"><CardContent className="p-3 text-sm text-destructive">Failed to load data: {error}</CardContent></Card>)}
+      {isLoading && coins.length === 0 && (<div className="space-y-3">{Array.from({ length: 5 }).map((_, i) => (<div key={i} className="animate-pulse bg-card/80 rounded-lg p-5 space-y-3"><div className="flex items-center gap-3"><div className="h-10 w-10 bg-muted rounded-full" /><div className="h-4 bg-muted rounded w-1/4" /></div><div className="h-3 bg-muted rounded w-3/4" /></div>))}</div>)}
+      <div className="space-y-3">{predictions.map((pred) => { const sparkData = (pred.coin.sparkline || []).filter(v => v != null).map((p, i) => ({ v: p, i })); const price = pred.coin.price; const isBullish = pred.trend === 'bullish'; const isBearish = pred.trend === 'bearish'; const bullPct = price > 0 ? ((pred.bullishTarget - price) / price * 100) : 0; const bearPct = price > 0 ? ((price - pred.bearishTarget) / price * 100) : 0
+        return (
+          <Card key={pred.coin.id} className="bg-card/80 backdrop-blur-sm border-border/40 hover:border-primary/30 hover:shadow-md hover:shadow-primary/5 transition-all duration-200"><CardContent className="p-4 space-y-3">
+            <div className="flex items-center gap-4"><div className="flex items-center gap-3 w-36 shrink-0"><div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center"><span className="text-xs font-bold text-primary">{pred.coin.symbol.slice(0, 2)}</span></div><div><div className="font-bold text-sm text-foreground">{pred.coin.symbol.toUpperCase()}</div><div className="text-xs text-muted-foreground">{pred.coin.name}</div></div></div><div className="text-sm font-bold text-foreground">{formatPrice(price)}</div><div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${isBullish ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : isBearish ? 'bg-red-500/15 text-red-400 border-red-500/30' : 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30'}`}>{isBullish ? <TrendingUp className="w-3 h-3" /> : isBearish ? <TrendingDown className="w-3 h-3" /> : <Minus className="w-3 h-3" />}{pred.trend.charAt(0).toUpperCase() + pred.trend.slice(1)}</div><div className="ml-auto text-xs text-muted-foreground">Confidence: <span className="font-bold text-foreground">{Math.round(pred.confidence)}%</span></div></div>
+            <div className="flex items-center gap-3"><div className="flex items-center gap-1.5 w-36 shrink-0"><ArrowDown className="w-4 h-4 text-red-400 shrink-0" /><div><div className="text-[10px] text-red-400/70 uppercase tracking-wide">Downside Target</div><div className="text-sm font-bold text-red-400">{formatPrice(pred.bearishTarget)}</div><div className="text-[10px] text-red-400/60">-{bearPct.toFixed(1)}% possible</div></div></div><div className="flex-1 px-2"><div className="relative h-8 rounded-full overflow-hidden bg-muted/50"><div className="absolute inset-0 flex"><div className="w-1/2 bg-gradient-to-r from-red-500/20 to-transparent" /><div className="w-1/2 bg-gradient-to-l from-emerald-500/20 to-transparent" /></div><div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-foreground/80 -translate-x-1/2" /><div className="absolute inset-0 flex items-center justify-center"><span className="text-[10px] font-medium text-foreground/60">Expected range: {formatPrice(pred.expectedLow)} — {formatPrice(pred.expectedHigh)}</span></div></div></div><div className="flex items-center gap-1.5 w-36 shrink-0 text-right justify-end"><div><div className="text-[10px] text-emerald-400/70 uppercase tracking-wide">Upside Target</div><div className="text-sm font-bold text-emerald-400">{formatPrice(pred.bullishTarget)}</div><div className="text-[10px] text-emerald-400/60">+{bullPct.toFixed(1)}% possible</div></div><ArrowUp className="w-4 h-4 text-emerald-400 shrink-0" /></div></div>
+            <div className="h-14">{sparkData.length > 0 && (<ResponsiveContainer width="100%" height="100%"><AreaChart data={sparkData} margin={{ top: 2, right: 4, bottom: 2, left: 4 }}><defs><linearGradient id={`pred-${pred.coin.id}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={isBullish ? '#10b981' : isBearish ? '#ef4444' : '#eab308'} stopOpacity={0.25} /><stop offset="100%" stopColor={isBullish ? '#10b981' : isBearish ? '#ef4444' : '#eab308'} stopOpacity={0} /></linearGradient></defs><ReferenceLine y={pred.bullishTarget} stroke="#10b981" strokeDasharray="4 4" strokeOpacity={0.4} /><ReferenceLine y={pred.bearishTarget} stroke="#ef4444" strokeDasharray="4 4" strokeOpacity={0.4} /><Area type="monotone" dataKey="v" stroke={isBullish ? '#10b981' : isBearish ? '#ef4444' : '#eab308'} strokeWidth={1.5} fill={`url(#pred-${pred.coin.id})`} dot={false} /><Tooltip contentStyle={{ backgroundColor: 'oklch(0.16 0.012 260)', border: '1px solid oklch(0.28 0.015 260)', borderRadius: '8px', fontSize: '12px' }} formatter={(value: number) => [formatPrice(value), 'Price']} labelFormatter={() => ''} /></AreaChart></ResponsiveContainer>)}</div>
+            <div className="flex flex-wrap gap-1.5 pt-1 border-t border-border/20">{pred.reasons.map((reason, i) => (<span key={i} className="text-[11px] px-2 py-0.5 rounded-full bg-secondary/80 text-muted-foreground">{reason}</span>))}</div>
+          </CardContent></Card>
+        )})}</div>
+      {!isLoading && predictions.length === 0 && !error && (<div className="text-center py-8 text-muted-foreground text-sm">No prediction data available</div>)}
     </div>
   )
 }
