@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Newspaper, BarChart3, Shield, Zap, Brain, Globe, TrendingUp } from 'lucide-react'
+import { Newspaper, BarChart3, Shield, Zap, Brain, Globe, TrendingUp, Calendar } from 'lucide-react'
 import { CryptoNews } from '@/components/CryptoNews'
 import { WeeklyPredictions } from '@/components/WeeklyPredictions'
 import { CryptoPredictions } from '@/components/CryptoPredictions'
 import { EventsPopup, MarketTicker } from '@/components/EventsPopup'
 import { MarketRadar } from '@/components/MarketRadar'
+import { EconomicCalendar } from '@/components/EconomicCalendar'
 
 function AgentStatus() {
   const agents = [
@@ -42,7 +43,6 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-accent/20">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
-        {/* Header */}
         <header className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center border border-primary/20">
@@ -57,31 +57,28 @@ export default function App() {
             <MarketTicker />
             <EventsPopup />
           </div>
+          <div className="hidden lg:block -my-6">
+            <MarketRadar />
+          </div>
         </header>
 
         <AgentStatus />
 
-        {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="mb-5 bg-secondary/60 backdrop-blur-sm">
-            <TabsTrigger value="markets" className="gap-2 text-sm">
-              <BarChart3 className="w-4 h-4" /> Markets
-            </TabsTrigger>
-            <TabsTrigger value="predictions" className="gap-2 text-sm">
-              <Brain className="w-4 h-4" /> Predictions
-            </TabsTrigger>
-            <TabsTrigger value="news" className="gap-2 text-sm">
-              <Newspaper className="w-4 h-4" /> News
-            </TabsTrigger>
+            <TabsTrigger value="markets" className="gap-2 text-sm"><BarChart3 className="w-4 h-4" />Markets</TabsTrigger>
+            <TabsTrigger value="predictions" className="gap-2 text-sm"><Brain className="w-4 h-4" />Predictions</TabsTrigger>
+            <TabsTrigger value="news" className="gap-2 text-sm"><Newspaper className="w-4 h-4" />News</TabsTrigger>
+            <TabsTrigger value="events" className="gap-2 text-sm"><Calendar className="w-4 h-4" />Events</TabsTrigger>
           </TabsList>
-
-          <TabsContent value="markets"><WeeklyPredictions /></TabsContent>
-          <TabsContent value="predictions"><CryptoPredictions /></TabsContent>
-          <TabsContent value="news"><CryptoNews /></TabsContent>
+          <TabsContent value="markets" className="mt-0"><WeeklyPredictions /></TabsContent>
+          <TabsContent value="predictions" className="mt-0"><CryptoPredictions /></TabsContent>
+          <TabsContent value="news" className="mt-0"><CryptoNews /></TabsContent>
+          <TabsContent value="events" className="mt-0"><EconomicCalendar /></TabsContent>
         </Tabs>
 
         <footer className="mt-10 pt-4 border-t border-border/50 text-center">
-          <p className="text-xs text-muted-foreground">⚡ Powered by AI Agent Team • Live data from CoinGecko, CoinTelegraph, CoinDesk & Decrypt • Not financial advice</p>
+          <p className="text-xs text-muted-foreground">⚡ Powered by AI Agent Team • Live data from CoinPaprika, CoinTelegraph, CoinDesk, Decrypt & Investing.com • Not financial advice</p>
         </footer>
       </div>
     </div>
